@@ -6,7 +6,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.gemmachat.data.ChatMessage
 import com.example.gemmachat.data.ChatRepository
+import com.example.gemmachat.data.ConversationManager
 import com.example.gemmachat.model.LlmInferenceWrapper
+import com.example.gemmachat.model.ModelConfig
 import com.example.gemmachat.model.ModelManager
 import com.example.gemmachat.model.ModelSetupState
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,19 +28,26 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val modelManager = ModelManager(application)
     private var llmWrapper: LlmInferenceWrapper? = null
 
-    // 添加仓库实例
-    private val chatRepository = ChatRepository()
+    // 替换ChatRepository为ConversationManager
+    private val conversationManager = ConversationManager()
 
     // 跟踪当前正在生成的机器人消息
     private var currentBotMessageId: String? = null
     private val currentBotResponse = StringBuilder()
+    
+    // 模型相关状态
+    private val _downloadingModel = MutableStateFlow<ModelConfig?>(null)
+    val downloadingModel: StateFlow<ModelConfig?> = _downloadingModel.asStateFlow()
+    
+    private val _downloadProgress = MutableStateFlow<Int?>(null)
+    val downloadProgress: StateFlow<Int?> = _downloadProgress.asStateFlow()
 
     init {
         loadModel()
 
-        // 观察仓库中的消息并更新UI状态
+        // 观察对话管理器中的消息并更新UI状态
         viewModelScope.launch {
-            chatRepository.messages.collect { messages ->
+            conversationManager.currentMessages.collect { messages ->
                 _uiState.update { currentState ->
                     if (currentState is ChatUiState.Ready) {
                         ChatUiState.Ready(messages)
@@ -77,15 +86,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 _uiState.update {
                     ChatUiState.LoadingModel("正在初始化模型...")
                 }
-            }
-            is ModelSetupState.Ready -> {
+            }            is ModelSetupState.Ready -> {
                 llmWrapper = state.llmWrapper
                 // 创建初始欢迎消息
                 val welcomeMessage = ChatMessage(
-                    text = "您好！我是基于Gemma 3 1B模型的聊天助手。请问有什么可以帮到您的吗？",
+                    text = "您好！我是基于Gemma模型的聊天助手。请问有什么可以帮到您的吗？",
                     isFromUser = false
                 )
-                chatRepository.addMessage(welcomeMessage)
+                conversationManager.addMessageToCurrentConversation(welcomeMessage)
                 _uiState.update {
                     ChatUiState.Ready(messages = listOf(welcomeMessage))
                 }
@@ -101,14 +109,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun sendMessage(text: String) {
         if (_uiState.value !is ChatUiState.Ready || text.isBlank()) {
             return
-        }
-
-        // 创建并添加用户消息
+        }        // 创建并添加用户消息
         val userMessage = ChatMessage(
             text = text,
             isFromUser = true
         )
-        chatRepository.addMessage(userMessage)
+        conversationManager.addMessageToCurrentConversation(userMessage)
 
         // 创建"正在输入"消息
         val typingMessageId = UUID.randomUUID().toString()
@@ -118,10 +124,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             isFromUser = false,
             isLoading = true
         )
-        chatRepository.addMessage(typingMessage)
+        conversationManager.addMessageToCurrentConversation(typingMessage)
 
         // 构建提示
-        val recentMessages = chatRepository.getRecentMessagesForPrompt()
+        val recentMessages = conversationManager.getRecentMessagesForPrompt()
         val prompt = buildPrompt(recentMessages)
 
         // 生成响应
@@ -179,14 +185,94 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             currentBotMessageId = null
             currentBotResponse.clear()
         }
-    }
-
-    private fun updateBotMessage(messageId: String, text: String, isLoading: Boolean) {
-        chatRepository.updateMessage(messageId, text, isLoading)
+    }    private fun updateBotMessage(messageId: String, text: String, isLoading: Boolean) {
+        conversationManager.updateMessageInCurrentConversation(messageId, text, isLoading)
     }
 
     fun retryModelSetup() {
         loadModel()
+    }
+    
+    // 对话管理相关方法
+    fun getConversations() = conversationManager.conversations
+    fun getCurrentConversationId() = conversationManager.currentConversationId
+    
+    fun createNewConversation() {
+        conversationManager.createNewConversation()
+    }
+    
+    fun switchToConversation(conversationId: String) {
+        conversationManager.switchToConversation(conversationId)
+    }
+    
+    fun deleteConversation(conversationId: String) {
+        conversationManager.deleteConversation(conversationId)
+    }
+    
+    fun renameConversation(conversationId: String, newTitle: String) {
+        conversationManager.renameConversation(conversationId, newTitle)
+    }
+    
+    fun clearCurrentConversation() {
+        conversationManager.clearCurrentConversation()
+    }
+    
+    fun clearAllConversations() {
+        conversationManager.clearAllConversations()
+    }
+    
+    // 模型管理相关方法
+    fun getAvailableModels(): List<ModelConfig> = ModelConfig.AVAILABLE_MODELS
+    
+    fun getDownloadedModels(): List<ModelConfig> = modelManager.getDownloadedModels()
+    
+    fun getCurrentModel(): ModelConfig? = modelManager.getCurrentModel()
+    
+    fun downloadModel(modelConfig: ModelConfig) {
+        viewModelScope.launch {
+            _downloadingModel.value = modelConfig
+            _downloadProgress.value = 0
+            
+            modelManager.downloadAndInitializeModel(modelConfig).collect { state ->
+                when (state) {
+                    is ModelSetupState.Downloading -> {
+                        _downloadProgress.value = state.progress
+                    }
+                    is ModelSetupState.Initializing -> {
+                        _downloadProgress.value = null
+                    }
+                    is ModelSetupState.Ready -> {
+                        _downloadingModel.value = null
+                        _downloadProgress.value = null
+                        // 模型下载完成后，可以选择是否自动切换
+                    }
+                    is ModelSetupState.Error -> {
+                        _downloadingModel.value = null
+                        _downloadProgress.value = null
+                        // 处理下载错误
+                        Log.e(TAG, "Model download failed: ${state.message}")
+                    }
+                }
+            }
+        }
+    }
+    
+    fun switchToModel(modelConfig: ModelConfig) {
+        val modelFile = modelManager.getModelFile(modelConfig)
+        if (modelFile != null) {
+            viewModelScope.launch {
+                // 先关闭当前模型
+                llmWrapper?.close()
+                llmWrapper = null
+                
+                _uiState.update { ChatUiState.LoadingModel("正在切换模型...") }
+                
+                // 初始化新模型
+                modelManager.initializeExistingModel(modelFile, modelConfig).collect { state ->
+                    handleModelSetupState(state)
+                }
+            }
+        }
     }
 
     override fun onCleared() {

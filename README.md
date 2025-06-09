@@ -18,7 +18,7 @@ An Android chatbot app powered by the Google Gemma 3 1B-int4 model, supporting f
 
 ## Installation Guide
 
-1. Download the latest APK from the [Releases page](https://github.com/yourusername/gemma-chat-app/releases).
+1. Download the latest APK from the [Releases page](https://github.com/eleven-day/gemma-chat-app/releases).
 2. Enable "Install unknown apps" on your Android device (in Settings > Security).
 3. Install the downloaded APK file.
 4. Upon the first launch, the app will automatically download the model file (approximately 529MB). Please ensure a Wi-Fi connection.
