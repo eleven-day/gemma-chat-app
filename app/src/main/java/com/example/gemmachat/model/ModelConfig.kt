@@ -31,7 +31,7 @@ data class ModelConfig(
                 id = "gemma-3n-E2B-it-int4",
                 name = "Gemma 3N E2B INT4",
                 fileName = "gemma-3n-E2B-it-int4.task",
-                downloadUrl = "https://huggingface.co/google/gemma-3n-E2B-it-litert-preview/resolve/main/gemma-3n-E2B-it-int4.task",
+                downloadUrl = "https://huggingface.co/xiaohan1/gemma3n/resolve/main/gemma-3n-E2B-it-int4.task",
                 description = "优化版本，在保持速度的同时提供更好的对话质量",
                 size = "3.0 GB"
             ),
@@ -39,7 +39,7 @@ data class ModelConfig(
                 id = "gemma-3n-E4B-it-int4",
                 name = "Gemma 3N E4B INT4",
                 fileName = "gemma-3n-E4B-it-int4.task",
-                downloadUrl = "https://huggingface.co/google/gemma-3n-E4B-it-litert-preview/resolve/main/gemma-3n-E4B-it-int4.task",
+                downloadUrl = "https://huggingface.co/xiaohan1/gemma3n/resolve/main/gemma-3n-E4B-it-int4.task",
                 description = "高质量模型，提供最佳的对话体验，但需要更多资源",
                 size = "4.4 GB"
             )
